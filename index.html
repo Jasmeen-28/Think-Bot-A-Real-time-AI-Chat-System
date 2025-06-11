@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Stylish Chat Room</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/default.min.css">
+    <style>
+        body {
+    font-family: 'Arial', sans-serif;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    background: #1e1e2f;
+    color: #f5f5f5;
+}
+
+h1 {
+    text-align: center;
+    color: #ffffff;
+    font-size: 2.5rem;
+    margin-bottom: 20px;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+#user-name-section {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 20px;
+}
+
+#username {
+    padding: 12px;
+    font-size: 1rem;
+    margin-right: 10px;
+    border-radius: 25px;
+    border: 2px solid #4a90e2;
+    width: 250px;
+    background-color: #2b2b3c;
+    color: #ffffff;
+    transition: border-color 0.3s;
+}
+
+#username:focus {
+    border-color: #00bfff;
+    outline: none;
+}
+
+#setUsernameButton {
+    padding: 12px 20px;
+    font-size: 1rem;
+    background-color: #4a90e2;
+    color: white;
+    border: none;
+    border-radius: 25px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+#setUsernameButton:hover {
+    background-color: #007acc;
+}
+
+#chat-container {
+    width: 90%;
+    max-width: 800px;
+    max-height: 600px;
+    background-color: #2b2b3c;
+    border-radius: 10px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+#messages {
+    flex-grow: 1;
+    overflow-y: auto;
+    margin-bottom: 20px;
+    padding-right: 10px;
+    font-size: 1rem;
+    display: flex;
+    flex-direction: column;
+}
+
+.message-box {
+    margin: 8px 0;
+    padding: 12px 15px;
+    border-radius: 20px;
+    max-width: 70%;
+    word-wrap: break-word;
+    opacity: 0;
+    animation: fadeIn 0.5s forwards;
+}
+
+.sent {
+    background-color: #3a3a4f;
+    align-self: flex-end;
+    text-align: right;
+    border-radius: 20px 20px 0 20px;
+    color: #f5f5f5;
+}
+
+.received {
+    background-color: #44445c;
+    align-self: flex-start;
+    text-align: left;
+    border-radius: 20px 20px 20px 0;
+    color: #f5f5f5;
+}
+
+.sender {
+    font-weight: bold;
+    color: #a0d8ff;
+}
+
+.message {
+    margin-top: 5px;
+    white-space: pre-wrap;
+}
+
+#messageInput {
+    width: 80%;
+    padding: 12px;
+    border-radius: 25px;
+    border: 2px solid #555;
+    background-color: #1e1e2f;
+    color: white;
+    transition: border-color 0.3s;
+}
+
+#messageInput:focus {
+    border-color: #00bfff;
+    outline: none;
+}
+
+#sendButton,
+#micButton {
+    padding: 12px 20px;
+    background-color: #4a90e2;
+    color: white;
+    border: none;
+    border-radius: 25px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+#sendButton:hover,
+#micButton:hover {
+    background-color: #007acc;
+}
+
+#micButton.mic-recording {
+    background-color: #e74c3c;
+}
+
+.hidden {
+    display: none;
+}
+
+pre {
+    background-color: #1e1e1e;
+    color: #d4d4d4;
+    padding: 10px;
+    border-radius: 8px;
+    overflow-x: auto;
+    font-size: 0.9rem;
+}
+
+@keyframes fadeIn {
+    to { opacity: 1; }
+}
+
+    </style>
+</head>
+<body>
+    <div id="chat-container">
+        <h1>Welcome to ThinkBot 🤖!</h1>
+        <div id="user-name-section">
+            <input type="text" id="username" placeholder="Enter your name" />
+            <button id="setUsernameButton">Set Username</button>
+        </div>
+
+        <div id="messages"></div>
+
+        <div style="display: flex; gap: 10px; align-items: center;">
+            <input type="text" id="messageInput" class="hidden" placeholder="Type a message..." autocomplete="off">
+            <button id="sendButton" class="hidden">Send</button>
+            <button id="micButton" class="hidden">🎤</button>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+    <script>hljs.highlightAll();</script>
+
+    <script>
+        let username = '';
+        let mediaRecorder;
+        let audioChunks = [];
+
+        // Adjust the roomName to your actual variable or hardcoded string
+        const roomName = "{{ room_name }}"; 
+        const chatSocket = new WebSocket('ws://' + window.location.host + '/ws/chat/' + roomName + '/');
+
+        const messagesArea = document.getElementById('messages');
+        const messageInput = document.getElementById('messageInput');
+        const sendButton = document.getElementById('sendButton');
+        const setUsernameButton = document.getElementById('setUsernameButton');
+        const usernameInput = document.getElementById('username');
+        const micButton = document.getElementById("micButton");
+
+        let ongoingBotMessageElem = null;  // Track ongoing streamed message element
+
+        setUsernameButton.onclick = function () {
+            username = usernameInput.value.trim();
+            if (username) {
+                document.getElementById('user-name-section').classList.add('hidden');
+                messageInput.classList.remove('hidden');
+                sendButton.classList.remove('hidden');
+                micButton.classList.remove('hidden');
+            } else {
+                alert('Please enter username!');
+            }
+        };
+
+        chatSocket.onmessage = function (e) {
+            if (e.data instanceof Blob) {
+                const audio = new Audio(URL.createObjectURL(e.data));
+                audio.play();
+                return;
+            }
+
+            const data = JSON.parse(e.data);
+            const sender = data.sender || username;
+            const isFromUser = sender === username;
+            const type = data.type || 'text';
+
+            if (type === 'stream' && !isFromUser) {
+                if (!ongoingBotMessageElem) {
+                    // Create new bubble for streaming response
+                    ongoingBotMessageElem = createMessageBubble('', sender, false);
+                    messagesArea.appendChild(ongoingBotMessageElem.box);
+                }
+                // Append streamed chunk to the existing bubble
+                ongoingBotMessageElem.msgElem.textContent += data.message;
+                messagesArea.scrollTop = messagesArea.scrollHeight;
+            } else {
+                // Reset stream tracker because this is a final or user message
+                ongoingBotMessageElem = null;
+
+                const bubble = createMessageBubble(data.message, sender, isFromUser, type);
+                messagesArea.appendChild(bubble.box);
+                messagesArea.scrollTop = messagesArea.scrollHeight;
+            }
+        };
+
+        sendButton.onclick = () => {
+            const message = messageInput.value.trim();
+            if (message) {
+                chatSocket.send(JSON.stringify({ message, sender: username }));
+                messageInput.value = '';
+            }
+        };
+
+        messageInput.onkeydown = e => {
+            if (e.key === 'Enter') sendButton.click();
+        };
+
+        function createMessageBubble(message, sender, isFromUser = false, type = 'text') {
+            const box = document.createElement('div');
+            box.classList.add('message-box', isFromUser ? 'sent' : 'received');
+
+            const senderElem = document.createElement('div');
+            senderElem.classList.add('sender');
+            senderElem.textContent = sender;
+
+            const msgElem = document.createElement('div');
+            msgElem.classList.add('message');
+
+            if (type === 'image') {
+                const img = document.createElement('img');
+                img.src = message;
+                img.style.maxWidth = '100%';
+                img.style.borderRadius = '8px';
+                msgElem.appendChild(img);
+            } else if (message.includes('```')) {
+                const match = message.match(/```(\w+)?\n([\s\S]*?)```/);
+                if (match) {
+                    const lang = match[1] || '';
+                    const code = escapeHtml(match[2]);
+                    msgElem.innerHTML = `<pre><code class="language-${lang}">${code}</code></pre>`;
+                    setTimeout(() => hljs.highlightAll(), 0);
+                } else {
+                    msgElem.textContent = message;
+                }
+            } else {
+                msgElem.textContent = message;
+            }
+
+            box.appendChild(senderElem);
+            box.appendChild(msgElem);
+
+            return { box, msgElem };  // Return both so we can append text later for streams
+        }
+
+        function escapeHtml(text) {
+            return text
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;");
+        }
+
+        micButton.onclick = async () => {
+            if (mediaRecorder && mediaRecorder.state === "recording") {
+                mediaRecorder.stop();
+                micButton.textContent = "🎤 Speak";
+                micButton.classList.remove('mic-recording');
+            } else {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+
+                audioChunks = [];
+
+                mediaRecorder.ondataavailable = event => {
+                    if (event.data.size > 0) audioChunks.push(event.data);
+                };
+
+                mediaRecorder.onstop = () => {
+                    const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
+                    audioBlob.arrayBuffer().then(buffer => chatSocket.send(buffer));
+                };
+
+                mediaRecorder.start();
+                micButton.textContent = "🛑Stop";
+                micButton.classList.add('mic-recording');
+            }
+        };
+    </script>
+</body>
+</html>
